@@ -21,14 +21,15 @@ public class RetryAspect {
 	int tries = 3;
 
 	@Around("execution(* edu.sjsu.cmpe275.aop.tweet.TweetService.*(..))")
-	public void dummyAdviceOne(ProceedingJoinPoint joinPoint) throws Throwable {
+	public Object dummyAdviceOne(ProceedingJoinPoint joinPoint) throws Throwable {
 		System.out.println("Retry ...Prior to the executuion of the metohd " + joinPoint.getSignature().getName());
 		int i;
 		Throwable execept = null;
 		for (i = 0; i <= tries; i++) {
 			try {
-				joinPoint.proceed();
-				break;
+				Object result = joinPoint.proceed();
+				return result;
+				// break;
 			} catch (IOException e) {
 				execept = e;
 				if (i > 0)
@@ -43,6 +44,6 @@ public class RetryAspect {
 			System.out.println("Maximum retry attempts exceeded...");
 			throw execept;
 		}
-
+		return null;
 	}
 }

@@ -1,6 +1,5 @@
 package edu.sjsu.cmpe275.aop.tweet.aspect;
 
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -8,7 +7,7 @@ import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.After;
 import org.aspectj.lang.annotation.AfterReturning;
 import org.aspectj.lang.annotation.Aspect;
-import org.aspectj.lang.annotation.Before;
+import org.aspectj.lang.annotation.Pointcut;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 
@@ -26,40 +25,51 @@ public class StatsAspect {
 	@Autowired
 	TweetStatsServiceImpl stats;
 
-	@After("execution(public Long edu.sjsu.cmpe275.aop.tweet.TweetService.tweet(..))")
-	public void maxLengthTweet(JoinPoint joinPoint) {
+	@AfterReturning(pointcut = "execution(public Long edu.sjsu.cmpe275.aop.tweet.TweetService.tweet(..))", returning = "result")
+	public void maxLengthTweet(JoinPoint joinPoint, Object result) {
 		System.out.println("checking max length tweet, most popular tweeter");
 		String user = joinPoint.getArgs()[0].toString();
 		String tweet = joinPoint.getArgs()[1].toString();
 		System.out.println("tweet: " + tweet + " user: " + user);
 		int tweetShareCount = 0;
+		Set<String> userFollowers = stats.followCountMap.get(user);
+		Set<String> userBlocked = stats.blockCountMap.get(user);
+		if (userBlocked != null) {
+			userFollowers.removeAll(userBlocked);
+		}
 		if (tweet.length() > stats.lengthOfLongestTweet) {
 			stats.lengthOfLongestTweet = tweet.length();
 		}
 		if (!stats.tweetOwner.containsKey(tweet)) {
 			stats.tweetOwner.put(tweet, user);
-			if (stats.followCountMap.containsKey(user)) {
-				stats.tweetRecievers.put(tweet, stats.followCountMap.get(user));
+			if (userFollowers != null) {
+				stats.tweetRecievers.put(tweet, userFollowers);
 			} else {
 				stats.tweetRecievers.put(tweet, null);
 			}
 		} else {
-			if (stats.followCountMap.containsKey(user)) {
+			if (userFollowers != null) {
 				if (stats.tweetRecievers.get(tweet) == null) {
-					stats.tweetRecievers.put(tweet, stats.followCountMap.get(user));
+					stats.tweetRecievers.put(tweet, userFollowers);
 					stats.tweetRecievers.get(tweet).add(user);
 				} else {
-					stats.tweetRecievers.get(tweet).addAll(stats.followCountMap.get(user));
+					stats.tweetRecievers.get(tweet).addAll(userFollowers);
 				}
 			}
 		}
-		if (stats.tweetRecievers.get(tweet).size() >= stats.mostPopularMessage) {
-			if (stats.tweetRecievers.get(tweet).size() == stats.mostPopularMessage
-					&& stats.mostPopularMessageValue.compareTo(tweet) > 0) {
-				stats.mostPopularMessageValue = tweet;
-			} else {
-				stats.mostPopularMessageValue = tweet;
-				stats.mostPopularMessage = stats.tweetRecievers.get(tweet).size();
+		if (!stats.tweetIdOwner.containsKey((Long) result)) {
+			stats.tweetIdOwner.put((Long) result, user);
+		}
+		Set<String> currentTweetRecievers = stats.tweetRecievers.get(tweet);
+		if (currentTweetRecievers != null) {
+			if (currentTweetRecievers.size() >= stats.mostPopularMessage) {
+				if (currentTweetRecievers.size() == stats.mostPopularMessage
+						&& stats.mostPopularMessageValue.compareTo(tweet) > 0) {
+					stats.mostPopularMessageValue = tweet;
+				} else {
+					stats.mostPopularMessageValue = tweet;
+					stats.mostPopularMessage = currentTweetRecievers.size();
+				}
 			}
 		}
 		if (!stats.tweetDatabase.containsKey(user)) {
@@ -146,5 +156,35 @@ public class StatsAspect {
 			stats.maxFollowedUser = user;
 		}
 
+	}
+
+	@AfterReturning("execution(void edu.sjsu.cmpe275.aop.tweet.TweetService.like(..))")
+	public void AfterLikeStats(JoinPoint joinPoint) {
+		String follower = joinPoint.getArgs()[0].toString();
+		long msg = (Long) joinPoint.getArgs()[1];
+		int count = 0;
+		if (!stats.tweetLikers.containsKey(msg)) {
+			Set<String> likers = new HashSet<String>();
+			likers.add(follower);
+			stats.tweetLikers.put(msg, likers);
+			if (stats.mostLikedTweet == 0) {
+				stats.mostLikedTweet = msg;
+				stats.mostLikedTweetCount = 1;
+			}
+			count = 1;
+		} else {
+			stats.tweetLikers.get(msg).add(follower);
+			count = stats.tweetLikers.get(msg).size();
+		}
+		if (count >= stats.mostLikedTweetCount) {
+			if (count == stats.mostLikedTweetCount) {
+				if (msg < stats.mostLikedTweet) {
+					stats.mostLikedTweet = msg;
+				}
+			} else {
+				stats.mostLikedTweet = msg;
+				stats.mostLikedTweetCount = count;
+			}
+		}
 	}
 }
